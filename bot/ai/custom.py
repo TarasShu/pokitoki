@@ -44,6 +44,7 @@ class Model:
 
     def _generate_prompt(self, question, history):
         """Builds a prompt to provide context for the language model."""
+        print("_generate_prompt Funnnnn")
         prompt = ""
         for q, a in history:
             prompt += f"Q: {q} -> {a}{self.stop}"

@@ -5,10 +5,18 @@ import openai
 import tiktoken
 from bot.config import config
 
+from langchain.vectorstores import Pinecone
+from langchain.embeddings.openai import OpenAIEmbeddings
+import pinecone
+
+
 logger = logging.getLogger(__name__)
 
 openai.api_key = config.openai.api_key
 encoding = tiktoken.get_encoding("cl100k_base")
+
+
+
 
 
 class Model:
@@ -25,6 +33,7 @@ class Model:
         messages = self._generate_messages(question, history)
         messages = shorten(messages, length=n_input)
         params = self._prepare_params()
+
         resp = await openai.ChatCompletion.acreate(
             model=self.name,
             messages=messages,
@@ -50,11 +59,36 @@ class Model:
 
     def _generate_messages(self, question: str, history: list[tuple[str, str]]) -> list[dict]:
         """Builds message history to provide context for the language model."""
-        messages = [{"role": "system", "content": config.openai.prompt}]
+        #вставить пиниконе
+
+        pinecone_api_key = "9563d5a7-04cc-49ff-8f96-e44dc4b7fe44"
+        index_name="ole-data"
+        pinecone.init(api_key=pinecone_api_key, environment="gcp-starter")
+
+        pinecone.whoami()
+        index = pinecone.Index(index_name)
+
+        #встав
+        embed_model = "text-embedding-ada-002"
+        getEmbedding = openai.Embedding.create(
+        input=[question],
+        engine=embed_model)
+        # retrieve from Pinecone
+        xq = getEmbedding['data'][0]['embedding']
+
+        # get relevant contexts (including the questions)
+        getEmbedding = index.query(xq, top_k=5, include_metadata=True)
+        contexts = [item['metadata']['values'] for item in getEmbedding['matches']]
+        augmented_query = "\n\n---\n\n".join(contexts) + "\n\n-----\n\n" + question
+
+
+        messages = [{"role": "system", "content": augmented_query}]
+        print(messages)
         for prev_question, prev_answer in history:
             messages.append({"role": "user", "content": prev_question})
             messages.append({"role": "assistant", "content": prev_answer})
         messages.append({"role": "user", "content": question})
+
         return messages
 
     def _prepare_answer(self, resp) -> str:
@@ -63,7 +97,10 @@ class Model:
             raise ValueError("received an empty answer")
 
         answer = resp.choices[0].message.content
+
+
         answer = answer.strip()
+
         return answer
 
 
@@ -95,6 +132,8 @@ def shorten(messages: list[dict], length: int) -> list[dict]:
     tokens = encoding.encode(messages[1]["content"])
     tokens = tokens[:maxlen]
     messages[1]["content"] = encoding.decode(tokens)
+    print(messages)
+    print("shorten GGGGGG")
     return messages
 
 
